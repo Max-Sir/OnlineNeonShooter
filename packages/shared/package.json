@@ -1,0 +1,25 @@
+{
+  "name": "@neon/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Game simulation, constants and wire protocol shared by client and server",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.3",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

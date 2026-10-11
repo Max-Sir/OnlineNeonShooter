@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0f1a" />
+    <meta
+      name="description"
+      content="Neon Arena: a fast top-down multiplayer shooter in your browser."
+    />
+    <title>Neon Arena</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='10' fill='%2300e5ff'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <canvas id="game" aria-label="Game arena"></canvas>
+
+    <div id="hud" hidden>
+      <div id="hud-stats"></div>
+      <ol id="scoreboard" aria-label="Scoreboard"></ol>
+      <div id="killfeed" aria-live="polite"></div>
+    </div>
+
+    <div id="touch" hidden>
+      <div id="stick-move" class="stick"><div class="knob"></div></div>
+      <div id="stick-aim" class="stick"><div class="knob"></div></div>
+    </div>
+
+    <main id="menu">
+      <form id="join-form" autocomplete="off">
+        <h1>Neon Arena</h1>
+        <p class="tagline">Last one glowing wins.</p>
+        <label for="name">Callsign</label>
+        <input id="name" name="name" maxlength="16" required placeholder="Player" />
+        <button type="submit" id="play">Play</button>
+        <p id="status" role="status"></p>
+        <p class="help">
+          <strong>Move</strong> WASD / arrows &nbsp; <strong>Aim</strong> mouse &nbsp;
+          <strong>Shoot</strong> click or Space<br />
+          On touch devices: left stick moves, right stick aims and shoots.
+        </p>
+      </form>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+# Production-like stack:  docker compose up --build
+# Open http://localhost:8080  (change the host port with WEB_PORT in .env)
+
+name: neon-arena
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.server
+    image: neon-arena/server:local
+    restart: unless-stopped
+    # Not published to the host: browsers reach it through the web container (/ws).
+    expose:
+      - '8080'
+    environment:
+      PORT: '8080'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TICK_RATE: ${TICK_RATE:-30}
+      SNAPSHOT_DIVISOR: ${SNAPSHOT_DIVISOR:-2}
+      MAX_PLAYERS_PER_ROOM: ${MAX_PLAYERS_PER_ROOM:-16}
+      MAX_ROOMS: ${MAX_ROOMS:-20}
+      MAX_CONNECTIONS_PER_IP: ${MAX_CONNECTIONS_PER_IP:-20}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      # nginx in front of us sets X-Forwarded-For, so per-IP limits see real client addresses.
+      TRUST_PROXY: 'true'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    image: neon-arena/web:local
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - '${WEB_PORT:-8080}:8080'
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

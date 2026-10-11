@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            packages/*/coverage
+            apps/*/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
+  smoke:
+    name: Bundled server smoke test (bots)
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @neon/server build
+      - name: Start the server bundle and wait for health
+        env:
+          # All bots connect from one IP, so lift the per-IP cap for the test.
+          MAX_CONNECTIONS_PER_IP: '100'
+        run: |
+          PORT=8080 node apps/server/dist/server.cjs > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8080/healthz && exit 0
+            sleep 1
+          done
+          echo "server did not become healthy"; cat server.log; exit 1
+      - name: Run 12 bots for 8 seconds
+        run: pnpm --filter @neon/server bots -- --url ws://127.0.0.1:8080/ws --count 12 --seconds 8
+      - name: Show server log and metrics
+        if: always()
+        run: |
+          curl -fsS http://127.0.0.1:8080/metrics || true
+          tail -n 50 server.log || true
+
+  docker:
+    name: Docker images and compose smoke test
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build images
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.server
+          tags: neon-arena/server:local
+          load: true
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.web
+          tags: neon-arena/web:local
+          load: true
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+      - name: Start the stack and wait until both containers are healthy
+        run: docker compose up -d --no-build --wait --wait-timeout 90
+        env:
+          WEB_PORT: '8080'
+          MAX_CONNECTIONS_PER_IP: '100'
+      - name: Check the web page, security headers and proxied health endpoint
+        run: |
+          curl -fsS http://127.0.0.1:8080/ | grep -q "Neon Arena"
+          curl -fsSI http://127.0.0.1:8080/ | grep -i "content-security-policy"
+          curl -fsS http://127.0.0.1:8080/healthz
+      - name: Run bots through nginx (full network path)
+        run: pnpm --filter @neon/server bots -- --url ws://127.0.0.1:8080/ws --count 8 --seconds 8
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
